@@ -1,0 +1,20 @@
+[
+{
+	"file_path": "overlay/OVERLAY_MXC.mp4",
+	"width": 900,
+	"height": 680,
+	"position_x": 10,
+	"postion_y": 10,
+	"opacity": 0.02,
+    "loop": false
+},
+{
+	"file_path": "overlay/DOC.mp4",
+	"width": 1,
+	"height": 720,
+	"position_x": 958,
+	"postion_y": 0,
+	"opacity": 1.0,
+    "loop": false
+}
+]
