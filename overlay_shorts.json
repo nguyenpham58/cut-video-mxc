@@ -1,20 +1,11 @@
 [
 {
-	"file_path": "overlay/OVERLAY_MXC.mp4",
-	"width": 1050,
-	"height": 1900,
-	"position_x": 10,
-	"postion_y": 10,
-	"opacity": 0.02,
-    "loop": false
-},
-{
-	"file_path": "overlay/DOC.mp4",
-	"width": 1,
+	"file_path": "overlay/RAY_SWEEP.mov",
+	"width": 1080,
 	"height": 1920,
-	"position_x": 1078,
+	"position_x": 0,
 	"postion_y": 0,
 	"opacity": 1.0,
-    "loop": false
+    "loop": true
 }
 ]
