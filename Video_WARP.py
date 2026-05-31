@@ -20,16 +20,17 @@ FPS = 30
 VIDEO_SCALE_W = 1.02
 VIDEO_SCALE_H = 1.08
 
-VIDEO_CROP_WIDTH = 1060
-VIDEO_CROP_HEIGHT = 1912
+VIDEO_CROP_WIDTH = 1050
+VIDEO_CROP_HEIGHT = 1830
 
 # offset tính từ tâm crop
-CROP_POS_X = -50
+CROP_POS_X = -15
 CROP_POS_Y = -20
 
 RANDOM_COLOR = False
+WARP_VIDEO = True
 
-SKIP_INTRO = (0,3) # Random Từ 0 - 3.0 mỗi lần xử lý
+SKIP_INTRO = (1,3) # Random Từ 0 - 3.0 mỗi lần xử lý
 MAX_DURATION = 123
 
 
@@ -42,7 +43,7 @@ MAXRATE = "8M"
 BACKGROUND_DIR = Path(r"overlay/background")
 
 OVERLAY_CONFIG = Path(
-    "overlay_shorts.json"
+    "overlay_warp.json"
 )
 
 
@@ -315,7 +316,6 @@ def build_filter_complex(overlays, input_info):
         f"fps={FPS},"
         f"scale={input_scale_width}:{input_scale_height},"
         f"scale={zoom_width}:{zoom_height},"
-        f"lenscorrection=k1=-0.10:k2=-0.02,"
         f"crop={VIDEO_CROP_WIDTH}:{VIDEO_CROP_HEIGHT}:{crop_x}:{crop_y}"
     )
 
@@ -351,13 +351,29 @@ def build_filter_complex(overlays, input_info):
     filter_parts.extend(
         build_overlay_prepare_filters(overlays)
     )
-    filter_parts.extend(
-        build_overlay_apply_filters(
-            overlays=overlays,
-            start_label="v0",
-            final_label="vout",
+
+    if WARP_VIDEO:
+        filter_parts.extend(
+            build_overlay_apply_filters(
+                overlays=overlays,
+                start_label="v0",
+                final_label="v_final",
+            )
         )
-    )
+
+        filter_parts.append(
+            f"[v_final]"
+            f"lenscorrection=k1=-0.04:k2=-0.01"
+            f"[vout]"
+        )
+    else:
+        filter_parts.extend(
+            build_overlay_apply_filters(
+                overlays=overlays,
+                start_label="v0",
+                final_label="vout",
+            )
+        )
 
     return ";".join(filter_parts)
 

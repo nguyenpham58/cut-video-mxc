@@ -41,7 +41,6 @@ def build_filter_complex(date_text, overlays):
         f"contrast={contrast}:"
         f"saturation={saturation}:"
         f"brightness={brightness},"
-
         f"hue=h={hue_shift},"
         f"unsharp=5:5:0.4,"
         
