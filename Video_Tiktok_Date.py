@@ -4,6 +4,7 @@ import random
 import string
 import time
 from pathlib import Path
+from datetime import datetime, timedelta
 
 
 # =========================================================
@@ -14,36 +15,40 @@ OUTPUT_DIR = Path(r"02_OUTPUT")
 
 CANVAS_WIDTH = 1080
 CANVAS_HEIGHT = 1920
-
+CROP_VIDEO = True   # cắt đôi video ra kéo lệch 1 bên
 FPS = 30
 
-VIDEO_SCALE_W = 1.02
-VIDEO_SCALE_H = 1.08
+VIDEO_SCALE_W = 1.0
+VIDEO_SCALE_H = 1.0
 
-VIDEO_CROP_WIDTH = 1050
-VIDEO_CROP_HEIGHT = 1830
+VIDEO_CROP_WIDTH = 1080
+VIDEO_CROP_HEIGHT = 1920
 
 # offset tính từ tâm crop
-CROP_POS_X = -15
-CROP_POS_Y = -20
+CROP_POS_X = 0
+CROP_POS_Y = 0
 
 RANDOM_COLOR = False
-WARP_VIDEO = True
 
-SKIP_INTRO = (1,3) # Random Từ 0 - 3.0 mỗi lần xử lý
-MAX_DURATION = 123
+SKIP_INTRO = (0,3) # Random Từ 0 - 3.0 mỗi lần xử lý
+MAX_DURATION = 58
 
 
 PRESET = "p2"
 
-BITRATE = "5M"
-BUFSIZE = "5.5M"
+BITRATE = "6M"
+BUFSIZE = "6.5M"
 MAXRATE = "8M"
 
-BACKGROUND_DIR = Path(r"overlay/background")
-
 OVERLAY_CONFIG = Path(
-    "overlay_warp.json"
+    "overlay_tiktok.json"
+)
+
+font_path = (
+    Path(r"fonts/InstrumentSerif-Regular.ttf")
+    .resolve()
+    .as_posix()
+    .replace(":", r"\:")
 )
 
 
@@ -65,9 +70,12 @@ def get_random_name(length=12):
     )
 
 
-def get_random_background():
-    bg_files = list(BACKGROUND_DIR.glob("*.mp4"))
-    return random.choice(bg_files)
+def random_date(start="10/01/2020", end="30/05/2026"):
+    start_dt = datetime.strptime(start, "%d/%m/%Y")
+    end_dt = datetime.strptime(end, "%d/%m/%Y")
+    random_days = random.randint(0, (end_dt - start_dt).days)
+    result = start_dt + timedelta(days=random_days)
+    return result.strftime("%d/%m/%Y")
 
 
 def format_time(total_seconds):
@@ -124,6 +132,28 @@ def ffprobe_video_info(video_path: str | Path):
         "duration": duration,
     }
 
+def resolve_media_path(file_path: str) -> str:
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Không tồn tại: {file_path}")
+
+    # Folder -> random mp4
+    if path.is_dir():
+        mp4_files = [
+            f for f in path.iterdir()
+            if f.is_file() and f.suffix.lower() == ".mp4"
+        ]
+
+        if not mp4_files:
+            raise FileNotFoundError(
+                f"Không tìm thấy file mp4 trong folder: {file_path}"
+            )
+
+        return str(random.choice(mp4_files))
+
+    # File -> giữ nguyên
+    return str(path)
+
 
 # =========================================================
 # OVERLAY CONFIG
@@ -136,12 +166,14 @@ def load_overlays():
     with open(OVERLAY_CONFIG, "r", encoding="utf-8") as f:
         overlays = json.load(f)
 
-    # preload source size
+    # preload source size + resolve path (random nếu là folder)
     for overlay in overlays:
-        overlay_path = Path(overlay["file_path"])
+        overlay_path = resolve_media_path(overlay["file_path"])
+        overlay["file_path"] = overlay_path
         info = ffprobe_video_info(overlay_path)
         overlay["source_width"] = info["width"]
         overlay["source_height"] = info["height"]
+        print("DEBUG:", overlay_path)
 
     return overlays
 
@@ -172,8 +204,8 @@ def build_overlay_input_args(overlays):
 def build_overlay_prepare_filters(overlays):
     filter_parts = []
 
-    # index: 0 = input, 1 = bg, 2+ = overlays
-    for i, overlay in enumerate(overlays, start=2):
+    # index: 0 = input, 1+ = overlays
+    for i, overlay in enumerate(overlays, start=1):
         target_width = round(overlay["width"] / 2) * 2
         target_height = round(overlay["height"] / 2) * 2
         source_width = overlay["source_width"]
@@ -228,14 +260,14 @@ def build_overlay_apply_filters(
     filter_parts = []
     previous = start_label
 
-    for i, overlay in enumerate(overlays, start=2):
+    for i, overlay in enumerate(overlays, start=1):
         pos_x = overlay["position_x"]
         pos_y = overlay["postion_y"]
         overlay_loop = overlay.get("loop", True)
 
         out_label = (
             final_label
-            if i == len(overlays) + 1
+            if i == len(overlays)
             else f"tmp{i}"
         )
 
@@ -272,16 +304,6 @@ def build_filter_complex(overlays, input_info):
     filter_parts = []
 
     # =====================================================
-    # BACKGROUND
-    # =====================================================
-    filter_parts.append(
-        f"[1:v]"
-        f"fps={FPS},"
-        f"scale={CANVAS_WIDTH}:{CANVAS_HEIGHT}"
-        f"[bg]"
-    )
-
-    # =====================================================
     # INPUT VIDEO
     # =====================================================
     input_scale_width = CANVAS_WIDTH
@@ -306,9 +328,14 @@ def build_filter_complex(overlays, input_info):
     crop_x = clamp(crop_x, 0, zoom_width - VIDEO_CROP_WIDTH)
     crop_y = clamp(crop_y, 0, zoom_height - VIDEO_CROP_HEIGHT)
 
-    # center overlay
-    overlay_x = (CANVAS_WIDTH - VIDEO_CROP_WIDTH) // 2
-    overlay_y = (CANVAS_HEIGHT - VIDEO_CROP_HEIGHT) // 2
+    # pad to canvas size
+    pad_x = (CANVAS_WIDTH - VIDEO_CROP_WIDTH) // 2
+    pad_y = (CANVAS_HEIGHT - VIDEO_CROP_HEIGHT) // 2
+
+    # random date text
+    date_text = random_date()
+    rand_font_size = random.randint(68, 80)
+    rand_position_y = random.randint(88, 118)
 
     # prepare input video
     video_filter = (
@@ -316,34 +343,61 @@ def build_filter_complex(overlays, input_info):
         f"fps={FPS},"
         f"scale={input_scale_width}:{input_scale_height},"
         f"scale={zoom_width}:{zoom_height},"
-        f"crop={VIDEO_CROP_WIDTH}:{VIDEO_CROP_HEIGHT}:{crop_x}:{crop_y}"
+        f"crop={VIDEO_CROP_WIDTH}:{VIDEO_CROP_HEIGHT}:{crop_x}:{crop_y},"
+        f"setsar=1"
     )
 
     if RANDOM_COLOR:
         contrast = round(random.uniform(1.02, 1.08), 2)
-        saturation = round(random.uniform(1.04, 1.12), 2)
+        saturation = round(random.uniform(1.05, 1.12), 2)
         brightness = round(random.uniform(-0.01, 0.015), 3)
         gamma = round(random.uniform(0.96, 1.04), 2)
-        hue_shift = random.randint(5, 12)
+        hue_shift = random.randint(8, 14)
 
         video_filter += (
             f",eq=contrast={contrast}:saturation={saturation}:brightness={brightness}:gamma={gamma}"
             f",hue=h={hue_shift}"
-            f",noise=alls=2:allf=t"
-            f",unsharp=5:5:0.4"
             f",format=yuv420p"
         )
 
-    video_filter += "[fg]"
+    video_filter += (
+        f",pad={CANVAS_WIDTH}:{CANVAS_HEIGHT}:{pad_x}:{pad_y}:black[base]"
+    )
+
+    if CROP_VIDEO:
+        video_filter += (
+            ";"
+            "[base]split=2[top][bottom];"
+            "[top]crop=1080:960:0:0[topc];"
+            "[bottom]crop=1075:955:5:965,"
+            "scale=1075:960,"
+            "pad=1080:960:0:0:black[bottomc];"
+            "[topc][bottomc]vstack=inputs=2[video_tmp];"
+            "[video_tmp]"
+            f"drawtext="
+            f"fontfile='{font_path}':"
+            f"text='{date_text}':"
+            f"fontcolor=white:"
+            f"fontsize={rand_font_size}:"
+            f"x=(w-text_w)/2:"
+            f"y={rand_position_y}"
+            "[v0]"
+        )
+    else:
+        video_filter += (
+            ";"
+            "[base]"
+            f"drawtext="
+            f"fontfile='{font_path}':"
+            f"text='{date_text}':"
+            f"fontcolor=white:"
+            f"fontsize={rand_font_size}:"
+            f"x=(w-text_w)/2:"
+            f"y={rand_position_y}"
+            "[v0]"
+        )
 
     filter_parts.append(video_filter)
-
-    # bg + input
-    filter_parts.append(
-        f"[bg][fg]"
-        f"overlay={overlay_x}:{overlay_y}"
-        f"[v0]"
-    )
 
     # =====================================================
     # OVERLAY VIDEOS
@@ -351,29 +405,13 @@ def build_filter_complex(overlays, input_info):
     filter_parts.extend(
         build_overlay_prepare_filters(overlays)
     )
-
-    if WARP_VIDEO:
-        filter_parts.extend(
-            build_overlay_apply_filters(
-                overlays=overlays,
-                start_label="v0",
-                final_label="v_final",
-            )
+    filter_parts.extend(
+        build_overlay_apply_filters(
+            overlays=overlays,
+            start_label="v0",
+            final_label="vout",
         )
-
-        filter_parts.append(
-            f"[v_final]"
-            f"lenscorrection=k1=-0.04:k2=-0.01"
-            f"[vout]"
-        )
-    else:
-        filter_parts.extend(
-            build_overlay_apply_filters(
-                overlays=overlays,
-                start_label="v0",
-                final_label="vout",
-            )
-        )
+    )
 
     return ";".join(filter_parts)
 
@@ -410,10 +448,6 @@ def generate_ffmpeg_command(
         # input video
         "-ss", str(skip_intro),
         "-i", str(input_video),
-
-        # background
-        "-stream_loop", "-1",
-        "-i", str(get_random_background()),
     ]
 
     # overlay inputs
@@ -486,8 +520,9 @@ def render_video(
         output_video=output_video,
     )
 
-    print(f"="*50)
-    print(f"DEBUG CMD: {cmd}")
+    # print(f"="*50)
+    # print(f"DEBUG CMD: {cmd}")
+    # print(f"="*50)
 
     result = subprocess.run(
         cmd,

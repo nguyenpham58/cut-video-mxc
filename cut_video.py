@@ -6,6 +6,7 @@ import json
 import time
 import string
 
+
 INPUT_DIR = Path(r"C:\PHIM_MXC\01_INPUT")
 OUTPUT_DIR = Path(r"02_OUTPUT")
 CANVAS_WIDTH = 960
@@ -19,6 +20,28 @@ font_path = (
     .as_posix()
     .replace(":", r"\:")
 )
+
+def resolve_media_path(file_path: str) -> str:
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Không tồn tại: {file_path}")
+
+    # Folder -> random mp4
+    if path.is_dir():
+        mp4_files = [
+            f for f in path.iterdir()
+            if f.is_file() and f.suffix.lower() == ".mp4"
+        ]
+
+        if not mp4_files:
+            raise FileNotFoundError(
+                f"Không tìm thấy file mp4 trong folder: {file_path}"
+            )
+
+        return str(random.choice(mp4_files))
+
+    # File -> giữ nguyên
+    return str(path)
 
 def build_filter_complex(date_text, overlays):
     contrast = round(random.uniform(1.02, 1.08), 2)
@@ -42,7 +65,7 @@ def build_filter_complex(date_text, overlays):
         f"saturation={saturation}:"
         f"brightness={brightness},"
         f"hue=h={hue_shift},"
-        f"unsharp=5:5:0.4,"
+        # f"unsharp=5:5:0.4,"
         
         f"format=yuv420p,"
         f"drawtext="
@@ -67,7 +90,7 @@ def build_filter_complex(date_text, overlays):
 
         opacity = float(overlay.get("opacity", 1.0))
 
-        overlay_path = overlay["file_path"]
+        overlay_path = resolve_media_path(overlay["file_path"])
         extension = Path(overlay_path).suffix.lower()
 
         overlay_chain = f"[{i}:v]fps=30"
@@ -178,7 +201,7 @@ def build_filter_complex(date_text, overlays):
 
 
 
-def random_date(start="10/01/2020", end="30/05/2026"):
+def random_date(start="10/01/2020", end="30/06/2026"):
     start_dt = datetime.strptime(start, "%d/%m/%Y")
     end_dt = datetime.strptime(end, "%d/%m/%Y")
 
@@ -262,16 +285,20 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
             "-i", str(video_path),
         ]
 
-        for overlay in overlay_data:  
+        # Random Overlay
+        for overlay in overlay_data:
+            media_path = resolve_media_path(overlay["file_path"])
+
             if overlay.get("loop", True):
                 cmd.extend([
                     "-stream_loop", "-1",
-                    "-i", overlay["file_path"]
+                    "-i", media_path
                 ])
             else:
                 cmd.extend([
-                    "-i", overlay["file_path"]
+                    "-i", media_path
                 ])
+
 
         cmd.extend([
             "-filter_complex", filter_complex,
@@ -318,6 +345,7 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
 
         # print(f"="*50)
         # print(f"DEBUG CMD: {cmd}")
+        # print(f"="*50)
 
         print(f"Creating: {original_name} - P{part_index}.mp4")
         result = subprocess.run(
@@ -373,7 +401,7 @@ if __name__ == "__main__":
                 video_path=temp_path,
                 output_dir=OUTPUT_DIR,
                 original_name=original_name,
-                random_part=(160, 225)
+                random_part=(160, 205)
             )
             total_completed_parts += parts
         finally:

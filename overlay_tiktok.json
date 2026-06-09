@@ -1,11 +1,11 @@
 [
 {
 	"file_path": "overlay/bg_random",
-	"width": 1060,
-	"height": 1900,
+	"width": 1080,
+	"height": 1920,
 	"position_x": 10,
 	"postion_y": 10,
-	"opacity": 0.015,
+	"opacity": 0.008,
     "loop": false
 },
 {
@@ -13,16 +13,16 @@
 	"width": 1080,
 	"height": 2,
 	"position_x": 0,
-	"postion_y": 0,
+	"postion_y": 1,
 	"opacity": 1.0,
     "loop": false
 },
 {
-	"file_path": "overlay/LINE_NGANG",
-	"width": 1080,
-	"height": 4,
-	"position_x": 0,
-	"postion_y": 1914,
+	"file_path": "E:/TAINGUYEN/OVERLAY_ALL/LINE_DOC_V2",
+	"width": 8,
+	"height": 1920,
+	"position_x": 1071,
+	"postion_y": 0,
 	"opacity": 1.0,
     "loop": false
 }

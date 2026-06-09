@@ -4,6 +4,7 @@ import random
 import string
 import time
 from pathlib import Path
+from datetime import datetime, timedelta
 
 
 # =========================================================
@@ -14,35 +15,44 @@ OUTPUT_DIR = Path(r"02_OUTPUT")
 
 CANVAS_WIDTH = 1080
 CANVAS_HEIGHT = 1920
+FPS = 60
 
-FPS = 30
+# TINH CHỈNH VIDEO
+CROP_VIDEO = False   # cắt đôi video ra kéo lệch 1 bên
+RANDOM_COLOR = True
+VIDEO_SPEED = 1.1
 
-VIDEO_SCALE_W = 1.08
-VIDEO_SCALE_H = 1.08
+VIDEO_SCALE_W = 1.14
+VIDEO_SCALE_H = 1.14
 
-VIDEO_CROP_WIDTH = 1064
-VIDEO_CROP_HEIGHT = 1914
+VIDEO_CROP_WIDTH = 1080
+VIDEO_CROP_HEIGHT = 1920
 
 # offset tính từ tâm crop
-CROP_POS_X = -15
-CROP_POS_Y = -28
+CROP_POS_X = 0
+CROP_POS_Y = -90
 
-RANDOM_COLOR = False
 
-SKIP_INTRO = (0,3) # Random Từ 0 - 3.0 mỗi lần xử lý
-MAX_DURATION = 123
+
+SKIP_INTRO = (0,0) # Random Từ 0 - 3.0 mỗi lần xử lý
+MAX_DURATION = 30
 
 
 PRESET = "p2"
 
-BITRATE = "5M"
-BUFSIZE = "5.5M"
-MAXRATE = "8M"
-
-BACKGROUND_DIR = Path(r"overlay/bg_random")
+BITRATE = "8M"
+BUFSIZE = "8.5M"
+MAXRATE = "10M"
 
 OVERLAY_CONFIG = Path(
-    "overlay_shorts.json"
+    "overlay_tiktok.json"
+)
+
+font_path = (
+    Path(r"fonts/InstrumentSerif-Regular.ttf")
+    .resolve()
+    .as_posix()
+    .replace(":", r"\:")
 )
 
 
@@ -64,9 +74,12 @@ def get_random_name(length=12):
     )
 
 
-def get_random_background():
-    bg_files = list(BACKGROUND_DIR.glob("*.mp4"))
-    return random.choice(bg_files)
+def random_date(start="10/01/2020", end="30/05/2026"):
+    start_dt = datetime.strptime(start, "%d/%m/%Y")
+    end_dt = datetime.strptime(end, "%d/%m/%Y")
+    random_days = random.randint(0, (end_dt - start_dt).days)
+    result = start_dt + timedelta(days=random_days)
+    return result.strftime("%d/%m/%Y")
 
 
 def format_time(total_seconds):
@@ -195,8 +208,8 @@ def build_overlay_input_args(overlays):
 def build_overlay_prepare_filters(overlays):
     filter_parts = []
 
-    # index: 0 = input, 1 = bg, 2+ = overlays
-    for i, overlay in enumerate(overlays, start=2):
+    # index: 0 = input, 1+ = overlays
+    for i, overlay in enumerate(overlays, start=1):
         target_width = round(overlay["width"] / 2) * 2
         target_height = round(overlay["height"] / 2) * 2
         source_width = overlay["source_width"]
@@ -251,14 +264,14 @@ def build_overlay_apply_filters(
     filter_parts = []
     previous = start_label
 
-    for i, overlay in enumerate(overlays, start=2):
+    for i, overlay in enumerate(overlays, start=1):
         pos_x = overlay["position_x"]
         pos_y = overlay["postion_y"]
         overlay_loop = overlay.get("loop", True)
 
         out_label = (
             final_label
-            if i == len(overlays) + 1
+            if i == len(overlays)
             else f"tmp{i}"
         )
 
@@ -295,16 +308,6 @@ def build_filter_complex(overlays, input_info):
     filter_parts = []
 
     # =====================================================
-    # BACKGROUND
-    # =====================================================
-    filter_parts.append(
-        f"[1:v]"
-        f"fps={FPS},"
-        f"scale={CANVAS_WIDTH}:{CANVAS_HEIGHT}"
-        f"[bg]"
-    )
-
-    # =====================================================
     # INPUT VIDEO
     # =====================================================
     input_scale_width = CANVAS_WIDTH
@@ -329,14 +332,20 @@ def build_filter_complex(overlays, input_info):
     crop_x = clamp(crop_x, 0, zoom_width - VIDEO_CROP_WIDTH)
     crop_y = clamp(crop_y, 0, zoom_height - VIDEO_CROP_HEIGHT)
 
-    # center overlay
-    overlay_x = (CANVAS_WIDTH - VIDEO_CROP_WIDTH) // 2
-    overlay_y = (CANVAS_HEIGHT - VIDEO_CROP_HEIGHT) // 2
+    # pad to canvas size
+    pad_x = (CANVAS_WIDTH - VIDEO_CROP_WIDTH) // 2
+    pad_y = (CANVAS_HEIGHT - VIDEO_CROP_HEIGHT) // 2
+
+    # random date text
+    date_text = random_date()
+    rand_font_size = random.randint(68, 80)
+    rand_position_y = random.randint(88, 118)
 
     # prepare input video
     video_filter = (
         f"[0:v]"
         f"fps={FPS},"
+        f"setpts=PTS/{VIDEO_SPEED},"
         f"scale={input_scale_width}:{input_scale_height},"
         f"scale={zoom_width}:{zoom_height},"
         f"crop={VIDEO_CROP_WIDTH}:{VIDEO_CROP_HEIGHT}:{crop_x}:{crop_y},"
@@ -344,11 +353,11 @@ def build_filter_complex(overlays, input_info):
     )
 
     if RANDOM_COLOR:
-        contrast = round(random.uniform(1.02, 1.08), 2)
-        saturation = round(random.uniform(1.04, 1.12), 2)
-        brightness = round(random.uniform(-0.01, 0.015), 3)
-        gamma = round(random.uniform(0.96, 1.04), 2)
-        hue_shift = random.randint(5, 12)
+        contrast = round(random.uniform(1.3, 1.45), 2)
+        saturation = round(random.uniform(1.3, 1.4), 2)
+        brightness = round(random.uniform(0.05, 0.08), 3)
+        gamma = round(random.uniform(1, 1.05), 2)
+        hue_shift = random.randint(-5, 5)
 
         video_filter += (
             f",eq=contrast={contrast}:saturation={saturation}:brightness={brightness}:gamma={gamma}"
@@ -356,15 +365,50 @@ def build_filter_complex(overlays, input_info):
             f",format=yuv420p"
         )
 
-    video_filter += "[fg]"
+    video_filter += (
+        f",pad={CANVAS_WIDTH}:{CANVAS_HEIGHT}:{pad_x}:{pad_y}:black[base]"
+    )
+
+    if CROP_VIDEO:
+        video_filter += (
+            ";"
+            "[base]split=2[top][bottom];"
+            "[top]crop=1080:960:0:0[topc];"
+            "[bottom]crop=1075:955:5:965,"
+            "scale=1075:960,"
+            "pad=1080:960:0:0:black[bottomc];"
+            "[topc][bottomc]vstack=inputs=2[video_tmp];"
+            "[video_tmp]"
+            f"drawtext="
+            f"fontfile='{font_path}':"
+            f"text='{date_text}':"
+            f"fontcolor=white:"
+            f"fontsize={rand_font_size}:"
+            f"x=(w-text_w)/2:"
+            f"y={rand_position_y}"
+            "[v0]"
+        )
+    else:
+        video_filter += (
+            ";"
+            "[base]"
+            f"drawtext="
+            f"fontfile='{font_path}':"
+            f"text='{date_text}':"
+            f"fontcolor=white:"
+            f"fontsize={rand_font_size}:"
+            f"x=(w-text_w)/2:"
+            f"y={rand_position_y}"
+            "[v0]"
+        )
 
     filter_parts.append(video_filter)
 
-    # bg + input
+    # =====================================================
+    # INPUT AUDIO
+    # =====================================================
     filter_parts.append(
-        f"[bg][fg]"
-        f"overlay={overlay_x}:{overlay_y}"
-        f"[v0]"
+        f"[0:a]atempo={VIDEO_SPEED}[aout]"
     )
 
     # =====================================================
@@ -416,10 +460,6 @@ def generate_ffmpeg_command(
         # input video
         "-ss", str(skip_intro),
         "-i", str(input_video),
-
-        # background
-        "-stream_loop", "-1",
-        "-i", str(get_random_background()),
     ]
 
     # overlay inputs
@@ -442,7 +482,7 @@ def generate_ffmpeg_command(
 
         # map
         "-map", "[vout]",
-        "-map", "0:a?",
+        "-map", "[aout]",
 
         # xoá sạch metadata / chapter / data / subtitle
         "-map_metadata", "-1",
@@ -465,7 +505,7 @@ def generate_ffmpeg_command(
         # audio
         "-c:a", "aac",
         "-ar", "44100",
-        "-b:a", "128k",
+        "-b:a", "192k",
 
         "-shortest",
 
