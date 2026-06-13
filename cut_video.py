@@ -82,34 +82,22 @@ def build_filter_complex(date_text, overlays):
 
     for i, overlay in enumerate(overlays, start=1):
 
-        target_width = round(overlay["width"] / 2) * 2
-        target_height = round(overlay["height"] / 2) * 2
-
-        source_width = overlay.get("source_width")
-        source_height = overlay.get("source_height")
+        # target_width = round(overlay["width"] / 2) * 2
+        # target_height = round(overlay["height"] / 2) * 2
+        target_width = overlay["width"]
+        target_height = overlay["height"]
 
         opacity = float(overlay.get("opacity", 1.0))
 
         overlay_path = resolve_media_path(overlay["file_path"])
         extension = Path(overlay_path).suffix.lower()
 
-        overlay_chain = f"[{i}:v]fps=30"
 
-        #
-        # Chỉ scale nếu source size khác target size
-        #
-
-        need_scale = (
-            source_width != target_width
-            or
-            source_height != target_height
+        overlay_chain = (
+            f"[{i}:v]"
+            f"fps=30,"
+            f"scale={target_width}:{target_height}"
         )
-
-        if need_scale:
-
-            overlay_chain += (
-                f",scale={target_width}:{target_height}"
-            )
 
         #
         # MOV alpha overlay

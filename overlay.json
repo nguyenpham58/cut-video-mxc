@@ -5,14 +5,41 @@
 	"height": 680,
 	"position_x": 10,
 	"postion_y": 10,
-	"opacity": 0.02,
+	"opacity": 0.014,
     "loop": false
 },
 {
-	"file_path": "overlay/DOC.mp4",
+	"file_path": "overlay/LINE_DOC_V2",
 	"width": 1,
 	"height": 720,
-	"position_x": 958,
+	"position_x": 959,
+	"postion_y": 0,
+	"opacity": 1.0,
+    "loop": false
+},
+{
+	"file_path": "overlay/LINE_NGANG",
+	"width": 960,
+	"height": 1,
+	"position_x": 0,
+	"postion_y": 0,
+	"opacity": 1.0,
+    "loop": false
+},
+{
+	"file_path": "overlay/LINE_NGANG",
+	"width": 960,
+	"height": 1,
+	"position_x": 0,
+	"postion_y": 719,
+	"opacity": 1.0,
+    "loop": false
+},
+{
+	"file_path": "overlay/LINE_DOC_V2",
+	"width": 1,
+	"height": 720,
+	"position_x": 0,
 	"postion_y": 0,
 	"opacity": 1.0,
     "loop": false
