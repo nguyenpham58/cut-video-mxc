@@ -14,6 +14,12 @@ CANVAS_HEIGHT = 720
 SKIP_INTRO = 15
 SKIP_OUTRO = 30
 
+# SETTING DELAY FRAME
+DELAY_ACTIVE = True
+FIRST_FRAME = random.randint(3, 4)
+DELAY_AUDIO = round(random.uniform(0.2, 0.3), 3)
+
+
 font_path = (
     Path(r"fonts/InstrumentSerif-Regular.ttf")
     .resolve()
@@ -44,10 +50,10 @@ def resolve_media_path(file_path: str) -> str:
     return str(path)
 
 def build_filter_complex(date_text, overlays):
-    contrast = round(random.uniform(1.02, 1.08), 2)
-    saturation = round(random.uniform(1.04, 1.12), 2)
-    brightness = round(random.uniform(-0.01, 0.015), 3)
-    hue_shift = random.randint(5, 12)
+    contrast = round(random.uniform(1.2, 1.3), 2)
+    saturation = round(random.uniform(1.08, 1.12), 2)
+    brightness = round(random.uniform(0.02, 0.03), 3)
+    hue_shift = random.randint(5, 8)
     rand_postion_y = random.randint(74, 88)
     rand_font_size = random.randint(40, 50)
 
@@ -75,8 +81,13 @@ def build_filter_complex(date_text, overlays):
         f"fontsize={rand_font_size}:"
         f"x=(w-text_w)/2:"
         f"y={rand_postion_y}"
-        f"[v0]"
     )
+
+    if DELAY_ACTIVE:
+        first_frame_sec = FIRST_FRAME / 30
+        base_chain += f",tpad=start_duration={first_frame_sec}:start_mode=clone"
+
+    base_chain += f"[v0]"
 
     filter_parts.append(base_chain)
 
@@ -228,6 +239,29 @@ def get_video_duration(video_path):
     return float(data["format"]["duration"])
 
 
+def ffprobe_has_audio(video_path):
+    cmd = [
+        "ffprobe",
+        "-v", "error",
+        "-select_streams", "a:0",
+        "-show_entries", "stream=index",
+        "-of", "json",
+        str(video_path)
+    ]
+
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        creationflags=subprocess.CREATE_NO_WINDOW
+    )
+
+    data = json.loads(result.stdout)
+    return len(data.get("streams", [])) > 0
+
+
 def split_video_random(video_path, output_dir, original_name, random_part=(180, 255)):
     video_path = Path(video_path)
     output_dir = Path(output_dir)
@@ -262,6 +296,14 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
             overlays=overlay_data
         )
 
+        has_audio_delayed = False
+        if DELAY_ACTIVE:
+            has_audio = ffprobe_has_audio(video_path)
+            if has_audio:
+                delay_ms = int(DELAY_AUDIO * 1000)
+                filter_complex += f";[0:a]adelay={delay_ms}|{delay_ms}[aout]"
+                has_audio_delayed = True
+
         cmd = [
             "ffmpeg",
             "-y",
@@ -292,8 +334,14 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
             "-filter_complex", filter_complex,
 
             "-map", "[vout]",
-            "-map", "0:a?",
+        ])
 
+        if has_audio_delayed:
+            cmd.extend(["-map", "[aout]"])
+        else:
+            cmd.extend(["-map", "0:a?"])
+
+        cmd.extend([
             # XÓA SẠCH METADATA / CHAPTER / DATA / SUBTITLE
             "-map_metadata", "-1",
             "-map_chapters", "-1",
@@ -331,9 +379,9 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
             str(output_path)
         ])
 
-        # print(f"="*50)
-        # print(f"DEBUG CMD: {cmd}")
-        # print(f"="*50)
+        print(f"="*50)
+        print(f"DEBUG CMD: {cmd}")
+        print(f"="*50)
 
         print(f"Creating: {original_name} - P{part_index}.mp4")
         result = subprocess.run(

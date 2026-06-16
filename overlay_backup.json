@@ -1,5 +1,14 @@
 [
 {
+	"file_path": "overlay/random",
+	"width": 900,
+	"height": 680,
+	"position_x": 10,
+	"postion_y": 10,
+	"opacity": 0.014,
+    "loop": false
+},
+{
 	"file_path": "overlay/LINE_DOC_V2",
 	"width": 1,
 	"height": 720,
