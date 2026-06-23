@@ -16,9 +16,13 @@ SKIP_OUTRO = 30
 
 # SETTING DELAY FRAME
 DELAY_ACTIVE = True
-FIRST_FRAME = random.randint(3, 4)
-DELAY_AUDIO = round(random.uniform(0.2, 0.3), 3)
-SPEED_VIDEO = round(random.uniform(1.08, 1.11), 2)
+FIRST_FRAME = random.randint(1, 1)
+DELAY_AUDIO = round(random.uniform(0.05, 0.06), 3)
+SPEED_VIDEO = round(random.uniform(1, 1), 4)
+SPEED_AUDIO = round(random.uniform(0.9995, 0.9998), 4)
+
+RANDOM_HOOK = True
+RANDOM_HOOK_INTRO = round(random.uniform(9, 12), 2)
 
 
 font_path = (
@@ -50,19 +54,19 @@ def resolve_media_path(file_path: str) -> str:
     # File -> giữ nguyên
     return str(path)
 
-def build_filter_complex(date_text, overlays):
-    contrast = round(random.uniform(1.2, 1.3), 2)
-    saturation = round(random.uniform(1.08, 1.12), 2)
-    brightness = round(random.uniform(0.02, 0.03), 3)
-    hue_shift = random.randint(5, 8)
-    rand_postion_y = random.randint(74, 82)
-    rand_font_size = random.randint(40, 45)
+def build_filter_complex(date_text, overlays, video_input_label="0:v", overlay_start_index=1):
+    contrast = round(random.uniform(1.05, 1.12), 3)
+    saturation = round(random.uniform(1.05, 1.12), 3)
+    brightness = round(random.uniform(0.01, 0.02), 4)
+    hue_shift = random.randint(-3, 3)
+    rand_postion_y = random.randint(70,80)
+    rand_font_size = random.randint(37, 42)
 
 
     filter_parts = []
 
     base_chain = (
-        f"[0:v]"
+        f"[{video_input_label}]"
         f"fps=30,"
         f"scale=-2:{CANVAS_HEIGHT},"
         f"crop={CANVAS_WIDTH}:{CANVAS_HEIGHT},"
@@ -94,8 +98,6 @@ def build_filter_complex(date_text, overlays):
 
     for i, overlay in enumerate(overlays, start=1):
 
-        # target_width = round(overlay["width"] / 2) * 2
-        # target_height = round(overlay["height"] / 2) * 2
         target_width = overlay["width"]
         target_height = overlay["height"]
 
@@ -104,9 +106,10 @@ def build_filter_complex(date_text, overlays):
         overlay_path = resolve_media_path(overlay["file_path"])
         extension = Path(overlay_path).suffix.lower()
 
+        input_idx = i + overlay_start_index - 1
 
         overlay_chain = (
-            f"[{i}:v]"
+            f"[{input_idx}:v]"
             f"fps=30,"
             f"scale={target_width}:{target_height}"
         )
@@ -292,41 +295,122 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
         with open("overlay.json", "r", encoding="utf-8") as f:
             overlay_data = json.load(f)
 
-        filter_complex = build_filter_complex(
-            date_text=date_text,
-            overlays=overlay_data
-        )
-
-        audio_filters = []
         has_audio = ffprobe_has_audio(video_path)
 
-        if DELAY_ACTIVE and has_audio:
-            delay_ms = int(DELAY_AUDIO * 1000)
-            audio_filters.append(f"adelay={delay_ms}|{delay_ms}")
+        # Hook logic
+        use_hook = False
+        hook_start = 0
+        if RANDOM_HOOK:
+            hook_offset = round(random.uniform(0.5, 1.0), 2)
+            candidate_hook_start = current_time + part_duration - hook_offset
+            if candidate_hook_start + RANDOM_HOOK_INTRO <= duration:
+                hook_start = candidate_hook_start
+                use_hook = True
+            else:
+                available_before = current_time - RANDOM_HOOK_INTRO - SKIP_INTRO
+                if available_before >= 0:
+                    hook_start = round(random.uniform(
+                        SKIP_INTRO, current_time - RANDOM_HOOK_INTRO
+                    ), 2)
+                    use_hook = True
 
+        # Build filter_complex
+        video_label = "cv" if use_hook else "0:v"
+        overlay_offset = 2 if use_hook else 1
+
+        filter_complex = build_filter_complex(
+            date_text=date_text,
+            overlays=overlay_data,
+            video_input_label=video_label,
+            overlay_start_index=overlay_offset
+        )
+
+        # Concat filter (hook + main)
+        if use_hook:
+            if has_audio:
+                concat_filter = "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[cv][ca]"
+            else:
+                concat_filter = "[0:v][1:v]concat=n=2:v=1:a=0[cv]"
+            filter_complex = concat_filter + ";" + filter_complex
+
+        # Video speed
         if SPEED_VIDEO != 1.0:
             filter_complex = filter_complex.replace("[vout]", "[vpre_speed]")
             filter_complex += f";[vpre_speed]setpts=PTS/{SPEED_VIDEO}[vout]"
-            if has_audio:
-                audio_filters.append(f"atempo={SPEED_VIDEO}")
 
-        has_audio_delayed = False
-        if audio_filters and has_audio:
-            filter_complex += f";[0:a]{','.join(audio_filters)}[aout]"
-            has_audio_delayed = True
+        # Audio chain: fade_in → delay → speed → trim → fade_out
+        if has_audio:
+            input_dur = part_duration
+            if use_hook:
+                input_dur += RANDOM_HOOK_INTRO
+            tpad_dur = FIRST_FRAME / 30 if DELAY_ACTIVE else 0
+            if SPEED_VIDEO != 1.0:
+                video_output_dur = (input_dur + tpad_dur) / SPEED_VIDEO
+            else:
+                video_output_dur = input_dur + tpad_dur
 
+            audio_parts = []
+            audio_parts.append("afade=t=in:d=0.1")
+
+            if DELAY_ACTIVE:
+                delay_ms = int(DELAY_AUDIO * 1000)
+                audio_parts.append(f"adelay={delay_ms}|{delay_ms}")
+
+            if SPEED_AUDIO != 1.0:
+                audio_parts.append(f"atempo={SPEED_AUDIO}")
+
+            audio_trim_end = round(video_output_dur - 1 / 30, 4)
+            audio_parts.append(f"atrim=end={audio_trim_end}")
+            audio_parts.append(
+                f"afade=t=out:st={round(audio_trim_end - 0.1, 4)}:d=0.1"
+            )
+
+            # Random audio fingerprint
+            audio_parts.append(f"highpass=f={random.randint(100, 150)}")
+            audio_parts.append(f"lowpass=f={random.randint(16500, 18000)}")
+            audio_parts.append(
+                f"equalizer=f={random.randint(1500, 2500)}"
+                f":t=q:w=1:g={random.uniform(-0.3, 0.3):.2f}"
+            )
+            audio_parts.append(
+                f"acompressor="
+                f"threshold={random.uniform(-20, -16):.3f}dB:"
+                f"ratio={random.uniform(3.5, 4.5):.3f}:"
+                f"attack={random.uniform(4, 8):.3f}:"
+                f"release={random.uniform(120, 180):.3f}:"
+                f"makeup={random.uniform(3, 4):.3f}"
+            )
+            audio_parts.append(f"volume={random.uniform(0.5, 1):.3f}")
+            audio_parts.append(
+                f"alimiter=limit={random.uniform(0.92, 0.98):.3f}"
+            )
+
+            audio_label = "ca" if use_hook else "0:a"
+            filter_complex += (
+                f";[{audio_label}]{','.join(audio_parts)}[aout]"
+            )
+
+        # Build ffmpeg command
         cmd = [
             "ffmpeg",
             "-y",
             "-hwaccel", "cuda",
-
-            "-ss", str(current_time),
-            "-t", str(part_duration),
-
-            "-i", str(video_path),
         ]
 
-        # Random Overlay
+        if use_hook:
+            cmd.extend([
+                "-ss", str(hook_start),
+                "-t", str(RANDOM_HOOK_INTRO),
+                "-i", str(video_path),
+            ])
+
+        cmd.extend([
+            "-ss", str(current_time),
+            "-t", str(part_duration),
+            "-i", str(video_path),
+        ])
+
+        # Overlay inputs
         for overlay in overlay_data:
             media_path = resolve_media_path(overlay["file_path"])
 
@@ -340,17 +424,20 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
                     "-i", media_path
                 ])
 
-
         cmd.extend([
             "-filter_complex", filter_complex,
-
             "-map", "[vout]",
         ])
 
-        if has_audio_delayed:
+        if has_audio:
             cmd.extend(["-map", "[aout]"])
         else:
             cmd.extend(["-map", "0:a?"])
+
+        # Random Meta Data
+        _rand_id = random.randint(100000, 999999)
+        _ts = int(time.time())
+        _meta_tag = f"Unique_{_rand_id}_{_ts}"
 
         cmd.extend([
             # XÓA SẠCH METADATA / CHAPTER / DATA / SUBTITLE
@@ -362,29 +449,24 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
             "-sn",
 
             # VIDEO
-            "-c:v", "h264_nvenc",
+            "-c:v", "hevc_nvenc",
             "-preset", "p2",
 
-            "-b:v", "3.5M",
-            "-maxrate", "3.8M",
-            "-bufsize", "4M",
+            "-b:v", "3.9M",
+            "-maxrate", "4M",
+            "-bufsize", "5M",
 
             "-r", "30",
 
             # AUDIO
             "-c:a", "aac",
-            "-ar", "44100",
-            "-b:a", "128k",
-
-            "-shortest",
+            "-b:a", f"{random.randint(58, 96)}k",
+            "-ar", "24000",
 
             # Ghi đè metadata encoder mặc định
-            "-metadata", "title=",
-            "-metadata", "comment=",
-            "-metadata", "description=",
-            "-metadata", "artist=",
-            "-metadata", "album=",
-            "-metadata", "creation_time=",
+            "-metadata", f"title={_meta_tag}",
+            "-metadata", f"comment={_meta_tag}",
+            "-metadata", f"artist={_meta_tag}",
             "-metadata", "encoder=",
 
             str(output_path)
