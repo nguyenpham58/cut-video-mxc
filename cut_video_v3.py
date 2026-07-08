@@ -7,12 +7,14 @@ import time
 import string
 
 
-INPUT_DIR = Path(r"C:\PHIM_MXC\01_INPUT")
+INPUT_DIR = Path(r"01_INPUT")
 OUTPUT_DIR = Path(r"02_OUTPUT")
-CANVAS_WIDTH = 960
-CANVAS_HEIGHT = 720
+CANVAS_WIDTH = 1080
+CANVAS_HEIGHT = 1920
 SKIP_INTRO = 15
 SKIP_OUTRO = 30
+
+BG_FOLDER = "overlay/BG_FILM"
 
 # SETTING DELAY FRAME
 DELAY_ACTIVE = True
@@ -21,7 +23,7 @@ DELAY_AUDIO = round(random.uniform(0.05, 0.06), 3)
 SPEED_VIDEO = round(random.uniform(1.1, 1.1), 5)
 SPEED_AUDIO = round(random.uniform(1.09995, 1.09998), 5)
 
-RANDOM_HOOK = True
+RANDOM_HOOK = False
 RANDOM_HOOK_INTRO = round(random.uniform(9, 12), 2)
 
 
@@ -54,22 +56,49 @@ def resolve_media_path(file_path: str) -> str:
     # File -> giữ nguyên
     return str(path)
 
-def build_filter_complex(date_text, overlays, video_input_label="0:v", overlay_start_index=1):
+def build_filter_complex(date_text, overlays, video_input_label="0:v", background_input_label="1:v", overlay_start_index=2):
     contrast = round(random.uniform(1.05, 1.12), 3)
     saturation = round(random.uniform(1.05, 1.12), 3)
     brightness = round(random.uniform(0.01, 0.02), 4)
     hue_shift = random.randint(-3, 3)
-    rand_postion_y = random.randint(70,80)
-    rand_font_size = random.randint(40, 48)
+    rand_postion_y = random.randint(60,70)
+    rand_font_size = random.randint(52,58)
 
+    # Zoom BG và Video
+    bg_zoom = round(random.uniform(1.03, 1.06), 3)
+    main_zoom_w = round(random.uniform(1.10, 1.18), 3)
+    main_zoom_h = round(random.uniform(1.15, 1.18), 3)
+
+    bg_w = int(CANVAS_WIDTH * bg_zoom)
+    bg_h = int(CANVAS_HEIGHT * bg_zoom)
+
+    main_w = int(CANVAS_WIDTH * main_zoom_w)
 
     filter_parts = []
+
+    bg_chain = (
+        f"[{background_input_label}]"
+        f"fps=22,"
+        f"scale={bg_w}:{bg_h},"
+        f"crop={CANVAS_WIDTH}:{CANVAS_HEIGHT}:"
+        f"x=(iw-{CANVAS_WIDTH})/2:"
+        f"y=(ih-{CANVAS_HEIGHT})/2,"
+        f"format=yuv420p"
+        f"[bg]"
+    )
+    filter_parts.append(bg_chain)
 
     base_chain = (
         f"[{video_input_label}]"
         f"fps=22,"
-        f"scale=-2:{CANVAS_HEIGHT},"
-        f"crop={CANVAS_WIDTH}:{CANVAS_HEIGHT},"
+        # scale full width trước, rồi zoom width
+        f"scale={main_w}:-2,"
+        # zoom height riêng, không phụ thuộc 16:9
+        f"scale=iw:trunc(ih*{main_zoom_h}/2)*2,"
+        # crop phần thừa theo width canvas
+        f"crop={CANVAS_WIDTH}:ih:"
+        f"x=(iw-{CANVAS_WIDTH})/2:"
+        f"y=0,"
         # RANDOM COLOR
         f"eq="
         f"contrast={contrast}:"
@@ -91,9 +120,13 @@ def build_filter_complex(date_text, overlays, video_input_label="0:v", overlay_s
         first_frame_sec = FIRST_FRAME / 30
         base_chain += f",tpad=start_duration={first_frame_sec}:start_mode=clone"
 
-    base_chain += f"[v0]"
+    base_chain += f"[main]"
 
     filter_parts.append(base_chain)
+
+    final_label = "vout" if not overlays else "v0"
+    compose_chain = f"[bg][main]overlay=(W-w)/2:(H-h)/2:shortest=1[{final_label}]"
+    filter_parts.append(compose_chain)
 
     for i, overlay in enumerate(overlays, start=1):
 
@@ -291,7 +324,7 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
         output_path = output_dir / temp_output_name
 
         date_text = random_date()
-        with open("overlay.json", "r", encoding="utf-8") as f:
+        with open("overlay_v3.json", "r", encoding="utf-8") as f:
             overlay_data = json.load(f)
 
         has_audio = ffprobe_has_audio(video_path)
@@ -313,14 +346,18 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
                     ), 2)
                     use_hook = True
 
+        bg_path = resolve_media_path(BG_FOLDER)
+
         # Build filter_complex
         video_label = "cv" if use_hook else "0:v"
-        overlay_offset = 2 if use_hook else 1
+        bg_label = "2:v" if use_hook else "1:v"
+        overlay_offset = 3 if use_hook else 2
 
         filter_complex = build_filter_complex(
             date_text=date_text,
             overlays=overlay_data,
             video_input_label=video_label,
+            background_input_label=bg_label,
             overlay_start_index=overlay_offset
         )
 
@@ -409,6 +446,11 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
             "-i", str(video_path),
         ])
 
+        cmd.extend([
+            "-stream_loop", "-1",
+            "-i", bg_path,
+        ])
+
         # Overlay inputs
         for overlay in overlay_data:
             media_path = resolve_media_path(overlay["file_path"])
@@ -451,29 +493,32 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
             "-c:v", "hevc_nvenc",
             "-preset", "p2",
 
-            "-b:v", "3.9M",
-            "-maxrate", "4M",
+            "-b:v", "3.5M",
+            "-maxrate", "3.8M",
             "-bufsize", "5M",
 
             "-r", "30",
 
             # AUDIO
             "-c:a", "aac",
-            "-b:a", f"{random.randint(58, 96)}k",
-            "-ar", "24000",
+            "-b:a", f"{random.randint(96, 128)}k",
+            "-ar", "44100",
 
             # Ghi đè metadata encoder mặc định
-            "-metadata", f"title={_meta_tag}",
-            "-metadata", f"comment={_meta_tag}",
-            "-metadata", f"artist={_meta_tag}",
+            "-metadata", "title=",
+            "-metadata", "comment=",
+            "-metadata", "description=",
+            "-metadata", "artist=",
+            "-metadata", "album=",
+            "-metadata", "creation_time=",
             "-metadata", "encoder=",
 
             str(output_path)
         ])
 
-        print(f"="*50)
-        print(f"DEBUG CMD: {cmd}")
-        print(f"="*50)
+        # print(f"="*50)
+        # print(f"DEBUG CMD: {cmd}")
+        # print(f"="*50)
 
         print(f"Creating: {original_name} - P{part_index}.mp4")
         result = subprocess.run(

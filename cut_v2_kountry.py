@@ -7,12 +7,17 @@ import time
 import string
 
 
-INPUT_DIR = Path(r"C:\PHIM_MXC\01_INPUT")
-OUTPUT_DIR = Path(r"02_OUTPUT")
-CANVAS_WIDTH = 960
-CANVAS_HEIGHT = 720
-SKIP_INTRO = 15
-SKIP_OUTRO = 30
+INPUT_DIR = Path(r"01_INPUT")
+OUTPUT_DIR = Path(r"02_OUTPUT\kountry")
+CANVAS_WIDTH = 720
+CANVAS_HEIGHT = 1280
+
+# VIDEO CUTTING SETTING
+TIME_MIN = 35
+TIME_MAX = 45
+SKIP_INTRO = 0
+SKIP_OUTRO = 0
+
 
 # SETTING DELAY FRAME
 DELAY_ACTIVE = True
@@ -67,7 +72,7 @@ def build_filter_complex(date_text, overlays, video_input_label="0:v", overlay_s
 
     base_chain = (
         f"[{video_input_label}]"
-        f"fps=22,"
+        f"fps=24,"
         f"scale=-2:{CANVAS_HEIGHT},"
         f"crop={CANVAS_WIDTH}:{CANVAS_HEIGHT},"
         # RANDOM COLOR
@@ -76,6 +81,7 @@ def build_filter_complex(date_text, overlays, video_input_label="0:v", overlay_s
         f"saturation={saturation}:"
         f"brightness={brightness},"
         f"hue=h={hue_shift},"
+        # f"unsharp=5:5:0.4,"
         
         f"format=yuv420p,"
         f"drawtext="
@@ -109,7 +115,7 @@ def build_filter_complex(date_text, overlays, video_input_label="0:v", overlay_s
 
         overlay_chain = (
             f"[{input_idx}:v]"
-            f"fps=22,"
+            f"fps=24,"
             f"scale={target_width}:{target_height}"
         )
 
@@ -265,7 +271,7 @@ def ffprobe_has_audio(video_path):
     return len(data.get("streams", [])) > 0
 
 
-def split_video_random(video_path, output_dir, original_name, random_part=(180, 255)):
+def split_video_random(video_path, output_dir, original_name, random_part=(120, 180)):
     video_path = Path(video_path)
     output_dir = Path(output_dir)
 
@@ -291,7 +297,7 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
         output_path = output_dir / temp_output_name
 
         date_text = random_date()
-        with open("overlay.json", "r", encoding="utf-8") as f:
+        with open("overlay_kountry.json", "r", encoding="utf-8") as f:
             overlay_data = json.load(f)
 
         has_audio = ffprobe_has_audio(video_path)
@@ -529,7 +535,7 @@ if __name__ == "__main__":
                 video_path=temp_path,
                 output_dir=OUTPUT_DIR,
                 original_name=original_name,
-                random_part=(160, 205)
+                random_part=(TIME_MIN, TIME_MAX)
             )
             total_completed_parts += parts
         finally:

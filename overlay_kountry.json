@@ -1,0 +1,38 @@
+[
+{
+	"file_path": "overlay/LINE_DOC_V2",
+	"width": 1,
+	"height": 1280,
+	"position_x": 719,
+	"postion_y": 0,
+	"opacity": 1.0,
+    "loop": false
+},
+{
+	"file_path": "overlay/LINE_NGANG",
+	"width": 720,
+	"height": 1,
+	"position_x": 0,
+	"postion_y": 0,
+	"opacity": 1.0,
+    "loop": false
+},
+{
+	"file_path": "overlay/LINE_NGANG",
+	"width": 720,
+	"height": 1,
+	"position_x": 0,
+	"postion_y": 1279,
+	"opacity": 1.0,
+    "loop": false
+},
+{
+	"file_path": "overlay/LINE_DOC_V2",
+	"width": 1,
+	"height": 1280,
+	"position_x": 0,
+	"postion_y": 0,
+	"opacity": 1.0,
+    "loop": false
+}
+]
