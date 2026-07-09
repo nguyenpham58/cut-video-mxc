@@ -7,7 +7,7 @@ import time
 import string
 
 
-INPUT_DIR = Path(r"01_INPUT")
+INPUT_DIR = Path(r"C:\PHIM_MXC\01_INPUT")
 OUTPUT_DIR = Path(r"02_OUTPUT")
 CANVAS_WIDTH = 1080
 CANVAS_HEIGHT = 1920
@@ -33,6 +33,26 @@ font_path = (
     .as_posix()
     .replace(":", r"\:")
 )
+
+def run_cmd(cmd, timeout=30):
+    try:
+        return subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+
+    except subprocess.TimeoutExpired:
+        raise TimeoutError(
+            f"FFmpeg timeout after {timeout}s\n"
+            f"CMD: {' '.join(map(str, cmd))}"
+        )
+    
 
 def resolve_media_path(file_path: str) -> str:
     path = Path(file_path)
@@ -521,22 +541,19 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
         # print(f"="*50)
 
         print(f"Creating: {original_name} - P{part_index}.mp4")
-        result = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            creationflags=subprocess.CREATE_NO_WINDOW
-        )
 
-        if result.returncode != 0:
-            print(result.stderr)
-        else:
-            final_output = output_dir / f"{original_name} - P{part_index}.mp4"
-            output_path.replace(final_output)
-            completed_parts += 1
+        try:
+            result = run_cmd(cmd, timeout=30)
+
+            if result.returncode != 0:
+                print(result.stderr)
+            else:
+                final_output = output_dir / f"{original_name} - P{part_index}.mp4"
+                output_path.replace(final_output)
+                completed_parts += 1
+
+        except TimeoutError as e:
+            print(e)
 
         time.sleep(0.5)
         current_time += part_duration
