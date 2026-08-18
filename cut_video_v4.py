@@ -13,14 +13,17 @@ OUTPUT_DIR = Path(r"E:\NP_SHARE\OUTPUT_NP")
 
 CANVAS_WIDTH = 1080
 CANVAS_HEIGHT = 1440
-VIDEO_SCALE_HEIGHT = 800
-VIDEO_PADDING_TOP = 418
+VIDEO_SCALE_HEIGHT = 840
+VIDEO_PADDING_TOP = 355
 
 MIN_PART = 128
 MAX_PART = 218
 
-SKIP_INTRO = random.randint(8, 15)
-SKIP_OUTRO = random.randint(25, 35)
+SKIP_INTRO = random.randint(8, 25)
+SKIP_OUTRO = random.randint(20, 35)
+BITRATE = "3.5M"
+MAXRATE = "3.8M"
+BUFSIZE = "5M"
 
 ACTIVE_BACKGROUND = False
 BG_FOLDER = "overlay/BG_FILM2"
@@ -31,8 +34,8 @@ FIRST_FRAME = random.randint(1, 1)
 DELAY_AUDIO = round(random.uniform(0.05, 0.06), 3)
 
 
-SPEED_VIDEO_MIN = 1.16
-SPEED_VIDEO_MAX = 1.16
+SPEED_VIDEO_MIN = 1.168
+SPEED_VIDEO_MAX = 1.168
 SPEED_AUDIO_MIN = SPEED_VIDEO_MIN - 0.005
 SPEED_AUDIO_MAX = SPEED_VIDEO_MAX - 0.002
 
@@ -106,11 +109,12 @@ def build_filter_complex(
     output_duration = round(cut_duration / speed, 4)
 
     contrast = round(random.uniform(1.05, 1.12), 3)
-    saturation = round(random.uniform(1.05, 1.12), 3)
-    brightness = round(random.uniform(0.01, 0.02), 4)
-    hue_shift = random.randint(-3, 3)
-    rand_postion_y = random.randint(60, 70)
-    rand_font_size = random.randint(52, 58)
+    saturation = round(random.uniform(0.68, 0.75), 3)
+    brightness = round(random.uniform(-0.03, -0.05), 4)
+    hue_shift = random.randint(-6, -1)
+
+    rand_postion_y = random.randint(110, 125)
+    rand_font_size = random.randint(64, 68)
 
     # ============================================================
     # ZOOM BG + VIDEO
@@ -162,6 +166,7 @@ def build_filter_complex(
     base_chain = (
         f"[{video_input_label}]"
         f"fps=25,"
+        f"hflip,"
 
         # Scale video theo chiều cao cố định
         f"scale=-2:{VIDEO_SCALE_HEIGHT},"
@@ -256,20 +261,43 @@ def build_filter_complex(
 
         overlay_loop = overlay.get("loop", True)
 
-        overlay_chain = (
-            f"[{input_idx}:v]"
-            f"fps=25,"
-            f"scale={target_width}:{target_height}"
-        )
+        # ========================================================
+        # PNG IMAGE OVERLAY
+        # ========================================================
 
-        if overlay_loop:
-            overlay_chain += f",trim=duration={output_duration},setpts=PTS-STARTPTS"
+        if extension == ".png":
+
+            overlay_chain = (
+                f"[{input_idx}:v]"
+                f"loop=loop=-1:size=1,"
+                f"fps=25,"
+                f"scale={target_width}:{target_height},"
+                f"trim=duration={output_duration},"
+                f"setpts=PTS-STARTPTS"
+            )
+
+            if opacity < 1.0:
+                overlay_chain += (
+                    f",format=rgba,"
+                    f"colorchannelmixer=aa={opacity}"
+                )
+            else:
+                overlay_chain += f",format=rgba"
 
         # ========================================================
         # MOV ALPHA OVERLAY
         # ========================================================
 
-        if extension == ".mov":
+        elif extension == ".mov":
+
+            overlay_chain = (
+                f"[{input_idx}:v]"
+                f"fps=25,"
+                f"scale={target_width}:{target_height}"
+            )
+
+            if overlay_loop:
+                overlay_chain += f",trim=duration={output_duration},setpts=PTS-STARTPTS"
 
             if opacity < 1.0:
                 overlay_chain += (
@@ -282,6 +310,15 @@ def build_filter_complex(
         # ========================================================
 
         else:
+
+            overlay_chain = (
+                f"[{input_idx}:v]"
+                f"fps=25,"
+                f"scale={target_width}:{target_height}"
+            )
+
+            if overlay_loop:
+                overlay_chain += f",trim=duration={output_duration},setpts=PTS-STARTPTS"
 
             if opacity < 1.0:
 
@@ -579,8 +616,13 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180,2
         # Overlay inputs
         for overlay in overlay_data:
             media_path = resolve_media_path(overlay["file_path"])
+            ext = Path(media_path).suffix.lower()
 
-            if overlay.get("loop", True):
+            if ext == ".png":
+                cmd.extend([
+                    "-i", media_path
+                ])
+            elif overlay.get("loop", True):
                 cmd.extend([
                     "-stream_loop", "-1",
                     "-i", media_path
@@ -603,7 +645,7 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180,2
         # Random Meta Data
         _rand_id = random.randint(100000, 999999)
         _ts = int(time.time())
-        _meta_tag = f"Unique_{_rand_id}_{_ts}"
+        _meta_tag = f"Editor_{_rand_id}_{_ts}"
 
         cmd.extend([
             # XÓA SẠCH METADATA / CHAPTER / DATA / SUBTITLE
@@ -618,9 +660,9 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180,2
             "-c:v", "hevc_nvenc",
             "-preset", "p2",
 
-            "-b:v", "2M",
-            "-maxrate", "2.2M",
-            "-bufsize", "4M",
+            "-b:v", f"{BITRATE}",
+            "-maxrate", f"{MAXRATE}",
+            "-bufsize", f"{BUFSIZE}",
 
             "-r", "30",
 
