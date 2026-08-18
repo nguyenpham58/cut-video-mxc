@@ -16,17 +16,30 @@ CANVAS_HEIGHT = 1440
 VIDEO_SCALE_HEIGHT = 800
 VIDEO_PADDING_TOP = 418
 
-SKIP_INTRO = 15
-SKIP_OUTRO = 30
+MIN_PART = 128
+MAX_PART = 218
 
+SKIP_INTRO = random.randint(8, 15)
+SKIP_OUTRO = random.randint(25, 35)
+
+ACTIVE_BACKGROUND = False
 BG_FOLDER = "overlay/BG_FILM2"
 
 # SETTING DELAY FRAME
 DELAY_ACTIVE = True
 FIRST_FRAME = random.randint(1, 1)
 DELAY_AUDIO = round(random.uniform(0.05, 0.06), 3)
-SPEED_VIDEO = round(random.uniform(1.1, 1.1), 5)
-SPEED_AUDIO = round(random.uniform(1.09995, 1.09998), 5)
+
+
+SPEED_VIDEO_MIN = 1.16
+SPEED_VIDEO_MAX = 1.16
+SPEED_AUDIO_MIN = SPEED_VIDEO_MIN - 0.005
+SPEED_AUDIO_MAX = SPEED_VIDEO_MAX - 0.002
+
+SPEED_VIDEO = round(random.uniform(SPEED_VIDEO_MIN, SPEED_VIDEO_MAX), 5)
+SPEED_AUDIO = round(random.uniform(SPEED_AUDIO_MIN, SPEED_AUDIO_MAX), 5)
+
+print(f"RANDOM SETTING: Speed Video: {SPEED_VIDEO} | Speed Audio: {SPEED_AUDIO} | Skip Intro: {SKIP_INTRO}s")
 
 RANDOM_HOOK = False
 RANDOM_HOOK_INTRO = round(random.uniform(9, 12), 2)
@@ -86,8 +99,12 @@ def build_filter_complex(
     overlays,
     video_input_label="0:v",
     background_input_label="1:v",
-    overlay_start_index=2
+    overlay_start_index=2,
+    cut_duration=180,
+    speed=1.0
 ):
+    output_duration = round(cut_duration / speed, 4)
+
     contrast = round(random.uniform(1.05, 1.12), 3)
     saturation = round(random.uniform(1.05, 1.12), 3)
     brightness = round(random.uniform(0.01, 0.02), 4)
@@ -113,16 +130,23 @@ def build_filter_complex(
     # BACKGROUND
     # ============================================================
 
-    bg_chain = (
-        f"[{background_input_label}]"
-        f"fps=25,"
-        f"scale={bg_w}:{bg_h},"
-        f"crop={CANVAS_WIDTH}:{CANVAS_HEIGHT}:"
-        f"x=(iw-{CANVAS_WIDTH})/2:"
-        f"y=(ih-{CANVAS_HEIGHT})/2,"
-        f"format=yuv420p"
-        f"[bg]"
-    )
+    if ACTIVE_BACKGROUND:
+        bg_chain = (
+            f"[{background_input_label}]"
+            f"fps=25,"
+            f"scale={bg_w}:{bg_h},"
+            f"crop={CANVAS_WIDTH}:{CANVAS_HEIGHT}:"
+            f"x=(iw-{CANVAS_WIDTH})/2:"
+            f"y=(ih-{CANVAS_HEIGHT})/2,"
+            f"format=yuv420p"
+            f"[bg]"
+        )
+    else:
+        bg_chain = (
+            f"color=c=black:s={CANVAS_WIDTH}x{CANVAS_HEIGHT}:r=25,"
+            f"format=yuv420p"
+            f"[bg]"
+        )
 
     filter_parts.append(bg_chain)
 
@@ -230,11 +254,16 @@ def build_filter_complex(
 
         input_idx = i + overlay_start_index - 1
 
+        overlay_loop = overlay.get("loop", True)
+
         overlay_chain = (
             f"[{input_idx}:v]"
             f"fps=25,"
             f"scale={target_width}:{target_height}"
         )
+
+        if overlay_loop:
+            overlay_chain += f",trim=duration={output_duration},setpts=PTS-STARTPTS"
 
         # ========================================================
         # MOV ALPHA OVERLAY
@@ -385,7 +414,7 @@ def ffprobe_has_audio(video_path):
     return len(data.get("streams", [])) > 0
 
 
-def split_video_random(video_path, output_dir, original_name, random_part=(180, 255)):
+def split_video_random(video_path, output_dir, original_name, random_part=(180,255)):
     video_path = Path(video_path)
     output_dir = Path(output_dir)
 
@@ -433,19 +462,27 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
                     ), 2)
                     use_hook = True
 
-        bg_path = resolve_media_path(BG_FOLDER)
+        if ACTIVE_BACKGROUND:
+            bg_path = resolve_media_path(BG_FOLDER)
 
         # Build filter_complex
         video_label = "cv" if use_hook else "0:v"
-        bg_label = "2:v" if use_hook else "1:v"
-        overlay_offset = 3 if use_hook else 2
+
+        if ACTIVE_BACKGROUND:
+            bg_label = "2:v" if use_hook else "1:v"
+            overlay_offset = 3 if use_hook else 2
+        else:
+            bg_label = ""
+            overlay_offset = 2 if use_hook else 1
 
         filter_complex = build_filter_complex(
             date_text=date_text,
             overlays=overlay_data,
             video_input_label=video_label,
             background_input_label=bg_label,
-            overlay_start_index=overlay_offset
+            overlay_start_index=overlay_offset,
+            cut_duration=part_duration,
+            speed=SPEED_VIDEO
         )
 
         # Concat filter (hook + main)
@@ -533,10 +570,11 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
             "-i", str(video_path),
         ])
 
-        cmd.extend([
-            "-stream_loop", "-1",
-            "-i", bg_path,
-        ])
+        if ACTIVE_BACKGROUND:
+            cmd.extend([
+                "-stream_loop", "-1",
+                "-i", bg_path,
+            ])
 
         # Overlay inputs
         for overlay in overlay_data:
@@ -658,7 +696,7 @@ if __name__ == "__main__":
                 video_path=temp_path,
                 output_dir=OUTPUT_DIR,
                 original_name=original_name,
-                random_part=(160, 205)
+                random_part=(MIN_PART, MAX_PART)
             )
             total_completed_parts += parts
         finally:

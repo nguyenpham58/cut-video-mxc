@@ -1,20 +1,11 @@
 [
 {
-	"file_path": "overlay/LINE_NGANG",
+	"file_path": "overlay/BG_MASK.mov",
 	"width": 1080,
-	"height": 2,
+	"height": 1440,
 	"position_x": 0,
-	"postion_y": 419,
+	"postion_y": 0,
 	"opacity": 1.0,
-    "loop": false
-},
-{
-	"file_path": "overlay/LALA.mov",
-	"width": 1080,
-	"height": 360,
-	"position_x": 0,
-	"postion_y": 1120,
-	"opacity": 1.0,
-    "loop": false
+    "loop": true
 }
 ]
