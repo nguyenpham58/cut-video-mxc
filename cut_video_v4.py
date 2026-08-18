@@ -8,15 +8,18 @@ import string
 
 
 # INPUT_DIR = Path(r"E:\NP_SHARE\MXC_PHIM\3")
-INPUT_DIR = Path(r"E:\NP_SHARE\MXC_PHIM\8")
-
+INPUT_DIR = Path(r"E:\NP_SHARE\MXC_PHIM\TEST")
 OUTPUT_DIR = Path(r"E:\NP_SHARE\OUTPUT_NP")
+
 CANVAS_WIDTH = 1080
-CANVAS_HEIGHT = 1920
+CANVAS_HEIGHT = 1440
+VIDEO_SCALE_HEIGHT = 800
+VIDEO_PADDING_TOP = 418
+
 SKIP_INTRO = 15
 SKIP_OUTRO = 30
 
-BG_FOLDER = "overlay/BG_FILM"
+BG_FOLDER = "overlay/BG_FILM2"
 
 # SETTING DELAY FRAME
 DELAY_ACTIVE = True
@@ -36,7 +39,7 @@ font_path = (
     .replace(":", r"\:")
 )
 
-def run_cmd(cmd, timeout=30):
+def run_cmd(cmd, timeout=60):
     try:
         return subprocess.run(
             cmd,
@@ -78,29 +81,41 @@ def resolve_media_path(file_path: str) -> str:
     # File -> giữ nguyên
     return str(path)
 
-def build_filter_complex(date_text, overlays, video_input_label="0:v", background_input_label="1:v", overlay_start_index=2):
+def build_filter_complex(
+    date_text,
+    overlays,
+    video_input_label="0:v",
+    background_input_label="1:v",
+    overlay_start_index=2
+):
     contrast = round(random.uniform(1.05, 1.12), 3)
     saturation = round(random.uniform(1.05, 1.12), 3)
     brightness = round(random.uniform(0.01, 0.02), 4)
     hue_shift = random.randint(-3, 3)
-    rand_postion_y = random.randint(60,70)
-    rand_font_size = random.randint(52,58)
+    rand_postion_y = random.randint(60, 70)
+    rand_font_size = random.randint(52, 58)
 
-    # Zoom BG và Video
-    bg_zoom = round(random.uniform(1.03, 1.06), 3)
-    main_zoom_w = round(random.uniform(1.10, 1.18), 3)
-    main_zoom_h = round(random.uniform(1.15, 1.18), 3)
+    # ============================================================
+    # ZOOM BG + VIDEO
+    # Tạm thời 1.0 để test layout
+    # ============================================================
+
+    bg_zoom = 1.0
+    main_zoom_w = 1.0
+    main_zoom_h = 1.0
 
     bg_w = int(CANVAS_WIDTH * bg_zoom)
     bg_h = int(CANVAS_HEIGHT * bg_zoom)
 
-    main_w = int(CANVAS_WIDTH * main_zoom_w)
-
     filter_parts = []
+
+    # ============================================================
+    # BACKGROUND
+    # ============================================================
 
     bg_chain = (
         f"[{background_input_label}]"
-        f"fps=22,"
+        f"fps=25,"
         f"scale={bg_w}:{bg_h},"
         f"crop={CANVAS_WIDTH}:{CANVAS_HEIGHT}:"
         f"x=(iw-{CANVAS_WIDTH})/2:"
@@ -108,27 +123,48 @@ def build_filter_complex(date_text, overlays, video_input_label="0:v", backgroun
         f"format=yuv420p"
         f"[bg]"
     )
+
     filter_parts.append(bg_chain)
+
+    # ============================================================
+    # MAIN VIDEO
+    #
+    # - Scale chiều cao = VIDEO_SCALE_HEIGHT
+    # - Giữ nguyên aspect ratio
+    # - Crop phần thừa 2 bên
+    # - Crop chính giữa theo chiều ngang
+    # ============================================================
 
     base_chain = (
         f"[{video_input_label}]"
-        f"fps=22,"
-        # scale full width trước, rồi zoom width
-        f"scale={main_w}:-2,"
-        # zoom height riêng, không phụ thuộc 16:9
-        f"scale=iw:trunc(ih*{main_zoom_h}/2)*2,"
-        # crop phần thừa theo width canvas
-        f"crop={CANVAS_WIDTH}:ih:"
+        f"fps=25,"
+
+        # Scale video theo chiều cao cố định
+        f"scale=-2:{VIDEO_SCALE_HEIGHT},"
+
+        # Crop theo chiều rộng canvas
+        # Nếu video rộng hơn canvas -> cắt đều 2 bên
+        f"crop={CANVAS_WIDTH}:{VIDEO_SCALE_HEIGHT}:"
         f"x=(iw-{CANVAS_WIDTH})/2:"
         f"y=0,"
+
+        # ========================================================
         # RANDOM COLOR
+        # ========================================================
+
         f"eq="
         f"contrast={contrast}:"
         f"saturation={saturation}:"
         f"brightness={brightness},"
+
         f"hue=h={hue_shift},"
-        
+
         f"format=yuv420p,"
+
+        # ========================================================
+        # DATE TEXT
+        # ========================================================
+
         f"drawtext="
         f"fontfile='{font_path}':"
         f"text='{date_text}':"
@@ -138,17 +174,49 @@ def build_filter_complex(date_text, overlays, video_input_label="0:v", backgroun
         f"y={rand_postion_y}"
     )
 
+    # ============================================================
+    # DELAY FIRST FRAME
+    # ============================================================
+
     if DELAY_ACTIVE:
         first_frame_sec = FIRST_FRAME / 30
-        base_chain += f",tpad=start_duration={first_frame_sec}:start_mode=clone"
 
-    base_chain += f"[main]"
+        base_chain += (
+            f",tpad="
+            f"start_duration={first_frame_sec}:"
+            f"start_mode=clone"
+        )
+
+    # Chỉ append label [main] một lần
+    base_chain += "[main]"
 
     filter_parts.append(base_chain)
 
+    # ============================================================
+    # COMPOSE MAIN VIDEO ON BG
+    #
+    # X = chính giữa theo chiều ngang
+    # Y = VIDEO_PADDING_TOP
+    #
+    # KHÔNG căn giữa theo chiều dọc
+    # ============================================================
+
     final_label = "vout" if not overlays else "v0"
-    compose_chain = f"[bg][main]overlay=(W-w)/2:(H-h)/2:shortest=1[{final_label}]"
+
+    compose_chain = (
+        f"[bg][main]"
+        f"overlay="
+        f"(W-w)/2:"
+        f"{VIDEO_PADDING_TOP}:"
+        f"shortest=1"
+        f"[{final_label}]"
+    )
+
     filter_parts.append(compose_chain)
+
+    # ============================================================
+    # OVERLAYS
+    # ============================================================
 
     for i, overlay in enumerate(overlays, start=1):
 
@@ -164,30 +232,25 @@ def build_filter_complex(date_text, overlays, video_input_label="0:v", backgroun
 
         overlay_chain = (
             f"[{input_idx}:v]"
-            f"fps=22,"
+            f"fps=25,"
             f"scale={target_width}:{target_height}"
         )
 
-        #
-        # MOV alpha overlay
-        #
+        # ========================================================
+        # MOV ALPHA OVERLAY
+        # ========================================================
 
         if extension == ".mov":
 
-            #
-            # Chỉ xử lý rgba runtime nếu opacity < 1
-            #
-
             if opacity < 1.0:
-
                 overlay_chain += (
                     f",format=rgba,"
                     f"colorchannelmixer=aa={opacity}"
                 )
 
-        #
-        # MP4 / normal overlay
-        #
+        # ========================================================
+        # MP4 / NORMAL OVERLAY
+        # ========================================================
 
         else:
 
@@ -208,6 +271,10 @@ def build_filter_complex(date_text, overlays, video_input_label="0:v", backgroun
 
         filter_parts.append(overlay_chain)
 
+    # ============================================================
+    # APPLY OVERLAYS
+    # ============================================================
+
     previous = "v0"
 
     for i, overlay in enumerate(overlays, start=1):
@@ -223,11 +290,9 @@ def build_filter_complex(date_text, overlays, video_input_label="0:v", backgroun
             else f"tmp{i}"
         )
 
-        #
-        # Nếu loop:
-        # overlay vô hạn
-        # không cần shortest
-        #
+        # ========================================================
+        # LOOP OVERLAY
+        # ========================================================
 
         if overlay_loop:
 
@@ -237,16 +302,16 @@ def build_filter_complex(date_text, overlays, video_input_label="0:v", backgroun
                 f"[{out_label}]"
             )
 
-        #
-        # Nếu không loop:
-        # overlay kết thúc thì stop overlay stream
-        #
+        # ========================================================
+        # NON-LOOP OVERLAY
+        # ========================================================
 
         else:
 
             overlay_chain = (
                 f"[{previous}][ov{i}]"
-                f"overlay={pos_x}:{pos_y}:eof_action=pass"
+                f"overlay={pos_x}:{pos_y}:"
+                f"eof_action=pass"
                 f"[{out_label}]"
             )
 
@@ -346,7 +411,7 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
         output_path = output_dir / temp_output_name
 
         date_text = random_date()
-        with open("overlay_v3.json", "r", encoding="utf-8") as f:
+        with open("overlay_v4.json", "r", encoding="utf-8") as f:
             overlay_data = json.load(f)
 
         has_audio = ffprobe_has_audio(video_path)
@@ -515,9 +580,9 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
             "-c:v", "hevc_nvenc",
             "-preset", "p2",
 
-            "-b:v", "3.5M",
-            "-maxrate", "3.8M",
-            "-bufsize", "5M",
+            "-b:v", "2M",
+            "-maxrate", "2.2M",
+            "-bufsize", "4M",
 
             "-r", "30",
 
@@ -538,9 +603,9 @@ def split_video_random(video_path, output_dir, original_name, random_part=(180, 
             str(output_path)
         ])
 
-        # print(f"="*50)
-        # print(f"DEBUG CMD: {cmd}")
-        # print(f"="*50)
+        print(f"="*50)
+        print(f"DEBUG CMD: {cmd}")
+        print(f"="*50)
 
         print(f"Creating: {original_name} - P{part_index}.mp4")
 
